@@ -119,16 +119,18 @@ All databases must have the Jarvis1.0 integration connected (database `...` menu
 ### Working
 - morning_briefing.py — fully tested, redesigned Notion page (callout summary, formatted calendar schedule, emoji headings, dividers), auto-opens in browser
 - session_start.py — fully tested, writes to Notion Session Start DB with project filtering, auto-opens in browser
-- session_debrief.py — fully tested, writes to Notion with project tagging
+- session_debrief.py — fully tested, writes to Notion with project tagging, Claude synthesizes user notes + GitHub commit details (files changed) into insightful debrief
 - Project-based context switching — debrief tagged with project name, session start filters by project to pull relevant history
 - Google OAuth — token.json saved, no browser popup needed on subsequent runs
 - All APIs authenticated and confirmed working (Claude, Notion, Gmail, Calendar, Todoist, GitHub)
 
 ### Not Yet Done
-- Cron setup on MacBook (PersonalHQ) for morning_briefing.py at 7am
-- Task Scheduler setup on PC (WorkHorse) — currently manual only (user wants to automate this later)
+- Automate session debrief so it doesn't require running from terminal
+- Automate morning briefing to run at a set hour (cron on Mac, Task Scheduler on PC)
+- Pair MacBook (PersonalHQ) for additional data sources (notes, Apple Health, etc.)
 - No unit tests yet
 - Gmail returned 0 unread emails during testing (may need to adjust query or test with actual unread mail)
+- First commit is pushed — GitHub fetch errors for empty repos are no longer expected
 
 ## Quick Verification
 ```bash
@@ -158,4 +160,4 @@ The session start page uses `_build_session_start_blocks()`:
 - PC has Python 3.12 AND 3.13 installed. Use `python -m pip install` (not bare `pip`) to target the right version.
 - `file_cache` warnings from `googleapiclient.discovery_cache` are harmless — ignore them.
 - Todoist `task.due.date` is a `datetime.date` object, not a string. Must use `str()` for comparison.
-- GitHub repo `AGrupper/Jarvis1.0` will stop erroring once the first commit is pushed.
+- GitHub repo `AGrupper/Jarvis1.0` — first commit pushed 2026-04-04. GitHub fetch errors should no longer occur.
