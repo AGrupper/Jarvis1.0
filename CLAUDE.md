@@ -114,23 +114,29 @@ cd agent && python workhorse/session_debrief.py
 
 All databases must have the Jarvis1.0 integration connected (database `...` menu > Connections). Missing properties (Date, Project, Status) are auto-created via the Notion API on first use.
 
-## Current Status (updated 2026-04-04)
+## Current Status (updated 2026-04-05)
 
 ### Working
 - morning_briefing.py — fully tested, redesigned Notion page (callout summary, formatted calendar schedule, emoji headings, dividers), auto-opens in browser
-- session_start.py — fully tested, writes to Notion Session Start DB with project filtering, auto-opens in browser
-- session_debrief.py — fully tested, writes to Notion with project tagging, Claude synthesizes user notes + GitHub commit details (files changed) into insightful debrief
+- **Summary voice tuned (2026-04-05)** — single flowing sentence, time-of-day greeting, weather-feel woven in. See `BRIEFING_SYSTEM_PROMPT` for Do/Don't rules. Approved example: *"Good morning, Amit. Mild and partly cloudy out there with a light breeze — you've got a solid day lined up with deep work, a session at Machon Weizmann..."*
+- **Weather integration (2026-04-05)** — Open-Meteo (no API key). `WEATHER_LOCATION` env var (use spaces not hyphens). Returns feel phrases (sky+temp+wind) with NO numeric temperatures
+- **Task tagging (2026-04-05)** — tasks pre-tagged `[OVERDUE]`/`[TODAY]` in the prompt input; overdue strictly means `due.date < today`
+- session_start.py — writes to Notion Session Start DB with project filtering, auto-opens in browser
+- session_debrief.py — writes to Notion with project tagging, Claude synthesizes user notes + GitHub commit details into insightful debrief
 - Project-based context switching — debrief tagged with project name, session start filters by project to pull relevant history
 - Google OAuth — token.json saved, no browser popup needed on subsequent runs
-- All APIs authenticated and confirmed working (Claude, Notion, Gmail, Calendar, Todoist, GitHub)
+- All APIs authenticated and confirmed working (Claude, Notion, Gmail, Calendar, Todoist, GitHub, Open-Meteo)
 
 ### Not Yet Done
+- Automate morning briefing to run at 7am (cron on Mac, Task Scheduler on PC)
 - Automate session debrief so it doesn't require running from terminal
-- Automate morning briefing to run at a set hour (cron on Mac, Task Scheduler on PC)
 - Pair MacBook (PersonalHQ) for additional data sources (notes, Apple Health, etc.)
 - No unit tests yet
-- Gmail returned 0 unread emails during testing (may need to adjust query or test with actual unread mail)
-- First commit is pushed — GitHub fetch errors for empty repos are no longer expected
+- Gmail query tuning — returned 0 unread during testing (verify on a day with actual unread mail)
+- Claude occasionally slips banned corporate filler words ("solid day", "deep work" name-checks) despite explicit DON'T list — user has tolerated it but keep an eye on it
+
+### Iteration workflow
+User reviews briefings via Notion page comments. Fetch via `notion-get-comments` MCP tool after each run and iterate the prompt based on feedback.
 
 ## Quick Verification
 ```bash
