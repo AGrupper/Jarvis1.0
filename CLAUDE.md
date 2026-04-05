@@ -6,6 +6,8 @@ Two-machine personal AI agent system with Notion as the shared brain.
 - **PersonalHQ** (MacBook) — cron-scheduled morning briefing at 7am
 - **WorkHorse** (PC) — manual session start/debrief scripts (both write to Notion + auto-open)
 
+**Collaboration context:** see [MEMORY.md](MEMORY.md) for briefing design preferences, iteration workflow, and other Jarvis-specific context Claude should know about.
+
 ## Tech Stack
 - Python 3.13 (primary on PC), 3.11+ compatible
 - Claude API (`claude-haiku-4-5-20251001`) via `anthropic` SDK
