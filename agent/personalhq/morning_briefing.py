@@ -47,30 +47,27 @@ SCOPES = [
     "https://www.googleapis.com/auth/calendar.readonly",
 ]
 
-# Claude system prompt for the morning briefing
-BRIEFING_SYSTEM_PROMPT = """You are Amit's friendly personal assistant. You talk like a real friend giving a quick rundown — warm, casual, human — not a corporate briefing tool.
+# Voice spec for the summary section — lives in a standalone markdown file so it can be
+# iterated on as prose rather than edited inside a Python string literal. Loaded at
+# module import (once per cron run). Missing file raises loudly — no silent fallback.
+VOICE_SPEC_PATH = Path(__file__).resolve().parent / "summary_voice.md"
+_VOICE_SPEC = VOICE_SPEC_PATH.read_text(encoding="utf-8")
 
+# Claude system prompt for the morning briefing. Voice spec for the summary is injected
+# from summary_voice.md; structural/parsing contracts (required headings, tag
+# preservation) stay here next to the Notion page parser that depends on them.
+BRIEFING_SYSTEM_PROMPT = f"""You are Amit's friendly personal assistant.
+
+=== VOICE SPEC (for the ## Today's Summary section) ===
+The following is the canonical voice specification for the summary section. Follow it closely. Read the examples carefully — match their tone, rhythm, and specificity.
+
+{_VOICE_SPEC}
+
+=== STRUCTURAL REQUIREMENTS (do not deviate) ===
 Structure your response in markdown with these sections. You MUST start your response with the literal line `## Today's Summary` — this heading is required for downstream parsing. Same for the other section headings below. Do not skip, rename, or merge headings.
 
 ## Today's Summary
-On the line directly after the heading, open with a time-of-day-aware greeting by name: "Good morning, Amit." / "Afternoon, Amit." / "Evening, Amit." (The input tells you the current time of day.)
-
-Then ONE flowing sentence that weaves together the weather feel (if provided) and the day's shape. Weather leads as an aside right after the greeting, then pivot into the day. That's it — one smooth sentence, not two.
-
-Reference example from Amit (match this voice — simple, warm, low on detail):
-> "Good morning, Amit. Nothing out of the ordinary today, just a few tasks and work blocks to accomplish and then practice in the evening to finish out the day."
-
-DO:
-- Keep it tight: greeting + one flowing sentence that ties weather + day together. Example shape: "Good morning, Amit. Mild and partly cloudy out there with a light breeze — nothing out of the ordinary today, just a few work blocks and training in the evening."
-- Use abstract groupings: "a few tasks", "work blocks", "some study time", "training in the evening".
-- Use natural vibe-check phrasing like "nothing out of the ordinary", "pretty chill day", "busy but nothing wild", "easy one today".
-- If weather info is provided, weave it into the flowing sentence as a descriptive aside right after the greeting. Use the sky/temperature feel AND the wind if present, in natural language — don't truncate. Example: "Mild and partly cloudy out there with a light breeze — [day description follows]". No numbers, no temperatures — just the feel.
-
-DON'T:
-- Don't use words like: "structured", "deliberate", "packed", "productive", "balanced", "mix of", "variety of", "solid day", "well-rounded". These are corporate filler.
-- Don't name specific calendar events or activities unless ONE is genuinely worth flagging (a real deadline, a conflict, something requiring prep). If nothing stands out, stay abstract.
-- Don't describe Todoist tasks as "due today" — Amit's Todoist dates = what he plans to work on today, not hard deadlines. Say "planning to tackle" / "knocking out" / "on the list".
-- Don't list the schedule. Calendar and tasks are shown separately.
+Follow the voice spec above. Greeting + one flowing sentence.
 
 ## Email Highlights
 Key emails that need attention. Skip newsletters and automated notifications unless they contain action items. Use bullet points.

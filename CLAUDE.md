@@ -118,7 +118,7 @@ All databases must have the Jarvis1.0 integration connected (database `...` menu
 
 ### Working
 - morning_briefing.py — fully tested, redesigned Notion page (callout summary, formatted calendar schedule, emoji headings, dividers), auto-opens in browser
-- **Summary voice tuned (2026-04-05)** — single flowing sentence, time-of-day greeting, weather-feel woven in. See `BRIEFING_SYSTEM_PROMPT` for Do/Don't rules. Approved example: *"Good morning, Amit. Mild and partly cloudy out there with a light breeze — you've got a solid day lined up with deep work, a session at Machon Weizmann..."*
+- **Summary voice spec externalized (2026-04-05)** — voice rules now live in [agent/personalhq/summary_voice.md](agent/personalhq/summary_voice.md) as prose + annotated examples + anti-examples, loaded at runtime and injected into `BRIEFING_SYSTEM_PROMPT`. Edit that file (not the Python prompt) when tuning voice. Structural/parsing requirements (required headings, `[OVERDUE]`/`[TODAY]` tag preservation) stay in `BRIEFING_SYSTEM_PROMPT` in [morning_briefing.py](agent/personalhq/morning_briefing.py) next to the parser. Approved example: *"Good morning, Amit. Mild and partly cloudy out there with a light breeze — you've got a solid day lined up with deep work, a session at Machon Weizmann..."*
 - **Weather integration (2026-04-05)** — Open-Meteo (no API key). `WEATHER_LOCATION` env var (use spaces not hyphens). Returns feel phrases (sky+temp+wind) with NO numeric temperatures
 - **Task tagging (2026-04-05)** — tasks pre-tagged `[OVERDUE]`/`[TODAY]` in the prompt input; overdue strictly means `due.date < today`
 - session_start.py — writes to Notion Session Start DB with project filtering, auto-opens in browser
