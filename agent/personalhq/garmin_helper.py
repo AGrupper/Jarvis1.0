@@ -6,7 +6,7 @@ import logging
 from datetime import date, datetime
 from pathlib import Path
 
-from garminconnect import Garmin
+from garminconnect import Garmin, GarminConnectAuthenticationError
 
 logger = logging.getLogger(__name__)
 
@@ -22,33 +22,38 @@ def _prompt_mfa() -> str:
 def _get_client() -> Garmin | None:
     """Authenticate with Garmin Connect. Returns None on failure.
 
-    On first run (no cached tokens), authenticates with email+password.
-    If the Garmin account has MFA enabled and this is an interactive session
-    (TTY), prompts for the one-time code.  Subsequent runs load cached tokens
-    and skip the network auth entirely.
+    Phase 1: try cached tokens (never touches Cloudflare — safe for repeated runs).
+    Phase 2: fall back to email+password credential login (first run or token expiry).
+    If the account has MFA enabled and this is an interactive session (TTY),
+    prompts for the one-time code. Tokens are cached after credential login so
+    Phase 1 succeeds on all subsequent runs.
     """
-    email = os.environ.get("GARMIN_EMAIL")
-    password = os.environ.get("GARMIN_PASSWORD")
-    if not email or not password:
-        logger.warning("GARMIN_EMAIL or GARMIN_PASSWORD not set — skipping Garmin.")
-        return None
-
     TOKENSTORE.mkdir(exist_ok=True)
     tokenstore_path = str(TOKENSTORE)
 
-    # Only offer interactive MFA prompt when running in a terminal.
-    # Automated (launchd) runs should not block waiting for input.
+    # Phase 1: token-only login — no credentials sent, no Cloudflare hit.
+    try:
+        client = Garmin(email=None, password=None)
+        client.login(tokenstore=tokenstore_path)
+        logger.info("Garmin Connect authenticated via cached tokens.")
+        return client
+    except Exception:
+        pass  # no tokens yet, or expired — fall through to credential login
+
+    # Phase 2: credential login (only on first run or after token expiry).
+    email = os.environ.get("GARMIN_EMAIL")
+    password = os.environ.get("GARMIN_PASSWORD")
+    if not email or not password:
+        logger.warning("GARMIN_EMAIL or GARMIN_PASSWORD not set and no cached tokens — skipping Garmin.")
+        return None
+
     import sys
     mfa_callback = _prompt_mfa if sys.stdin.isatty() else None
 
     try:
         client = Garmin(email=email, password=password, prompt_mfa=mfa_callback)
-        mfa_status, _ = client.login(tokenstore=tokenstore_path)
-        if mfa_status:
-            # return_on_mfa=False (default) means the library handled MFA inline;
-            # a non-None mfa_status here is unexpected — log and continue.
-            logger.warning("Garmin login MFA status: %s", mfa_status)
-        logger.info("Garmin Connect authenticated.")
+        client.login(tokenstore=tokenstore_path)
+        logger.info("Garmin Connect authenticated with credentials — tokens cached.")
         return client
     except Exception as e:
         logger.error("Garmin Connect auth failed: %s", e)

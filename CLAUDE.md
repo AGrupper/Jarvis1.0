@@ -151,7 +151,7 @@ All databases must have the Jarvis1.0 integration connected (database `...` menu
 - **Weather integration (2026-04-05)** — Open-Meteo (no API key). `WEATHER_LOCATION` env var (use spaces not hyphens). Returns feel phrases (sky+temp+wind) with NO numeric temperatures
 - **Task tagging (2026-04-05)** — tasks pre-tagged `[OVERDUE]`/`[TODAY]` in the prompt input; overdue strictly means `due.date < today`
 - **Garmin integration implemented (2026-04-06)** — `garmin_helper.py` written, wired into `morning_briefing.py`, Notion `_build_briefing_blocks()` updated for Body section. All code verified (syntax OK). End-to-end test passed WITHOUT Garmin (graceful degradation confirmed — briefing runs fine, Body section simply absent). launchd job loaded and confirmed registered (`com.jarvis.briefing`, fires at 5:30 AM / on wake). `run_briefing.sh` wrapper with 60-min dedup lock in place.
-- **Garmin auth NOT yet validated (2026-04-06)** — Hit Garmin's Cloudflare 429 rate limit during initial auth testing (~8 attempts across test runs). Code is correct; needs one successful auth to cache tokens in `agent/garmin_tokens/`. Rate limit clears in ~30-60 min. **Next step: run `python personalhq/garmin_helper.py` from terminal once rate limit is clear (wait at least 30 min since last attempt). If it prompts for MFA code, enter it — tokens cache and this never happens again.**
+- **Garmin auth — two-phase login implemented (2026-04-06)** — `_get_client()` now tries token-only login first (`Garmin(email=None, password=None)`), then falls back to credential login only if no cached tokens exist. This avoids Cloudflare entirely on all runs after the first. Previous approach (always constructing with credentials) hit Cloudflare 429/403 rate limits after ~8 attempts. **First run on Mac still required** — run `python personalhq/garmin_helper.py` from terminal, enter MFA code if prompted, tokens cache to `agent/garmin_tokens/` and credential login never happens again.
 - **Auto-sync from GitHub on session start (2026-04-06)** — `session_start.py` now runs `git pull` at the top of `main()` so the PC is always synced from the latest MacBook commits before starting work. Non-fatal: logs a warning and continues if there's no internet or a conflict.
 - session_start.py — writes to Notion Session Start DB with project filtering, auto-opens in browser
 - session_debrief.py — writes to Notion with project tagging, Claude synthesizes user notes + GitHub commit details into insightful debrief
@@ -160,7 +160,7 @@ All databases must have the Jarvis1.0 integration connected (database `...` menu
 - All APIs authenticated and confirmed working (Claude, Notion, Gmail, Calendar, Todoist, GitHub, Open-Meteo)
 
 ### Not Yet Done
-- **Garmin auth first-time validation** — run `python personalhq/garmin_helper.py` from terminal (at least 30-60 min after last attempt, ~10:45 AM on 2026-04-06). Enter MFA code if prompted. Then run full briefing to verify Body section in Notion.
+- **Garmin first-time token generation (Mac)** — run `cd agent && python personalhq/garmin_helper.py` from a terminal on the Mac. Enter MFA code if prompted. Tokens cache to `agent/garmin_tokens/` (gitignored). Then run full briefing to verify Body section appears in Notion.
 - Automate session debrief so it doesn't require running from terminal
 - No unit tests yet
 - Gmail query tuning — returned 0 unread during testing (verify on a day with actual unread mail)
