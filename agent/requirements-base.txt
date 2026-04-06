@@ -1,0 +1,4 @@
+# Shared deps used by both PersonalHQ (Mac) and WorkHorse (PC)
+anthropic>=0.89.0
+notion-client>=3.0.0
+python-dotenv>=1.1.0

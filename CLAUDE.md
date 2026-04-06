@@ -3,37 +3,61 @@
 ## Project Overview
 Two-machine personal AI agent system with Notion as the shared brain.
 
-- **PersonalHQ** (MacBook) — cron-scheduled morning briefing at 7am
+- **PersonalHQ** (MacBook) — morning briefing via launchd (5:30 AM, fires on wake)
 - **WorkHorse** (PC) — manual session start/debrief scripts (both write to Notion + auto-open)
 
 **Collaboration context:** see [MEMORY.md](MEMORY.md) for briefing design preferences, iteration workflow, and other Jarvis-specific context Claude should know about.
+
+## Machine Ownership
+
+| Directory | Machine | What it does |
+|---|---|---|
+| `agent/personalhq/` | **MacBook only** | Morning briefing (Gmail + Calendar + Todoist + Garmin + Weather -> Claude -> Notion). Triggered by launchd at 5:30 AM (fires on wake if Mac was asleep). |
+| `agent/workhorse/` | **PC only** | Session start + debrief (GitHub + last debrief -> Claude -> Notion). Run manually from terminal. |
+| `agent/shared/` | **Both** | Common code: `claude_helper.py`, `notion_helper.py`. Changes here affect both machines. |
+
+**Requirements per machine:**
+- Mac: `pip install -r agent/requirements-mac.txt`
+- PC: `pip install -r agent/requirements-pc.txt`
+- `agent/requirements.txt` is the union of all deps (kept for backwards compat)
+
+**Do not** run `personalhq/` scripts on the PC or `workhorse/` scripts on the Mac — they depend on machine-specific APIs and credentials.
 
 ## Tech Stack
 - Python 3.13 (primary on PC), 3.11+ compatible
 - Claude API (`claude-haiku-4-5-20251001`) via `anthropic` SDK
 - Notion via `notion-client` v3.0.0
-- Gmail + Google Calendar via `google-api-python-client` (OAuth2 Desktop flow)
+- Gmail + Google Calendar via `google-api-python-client` (OAuth2 Desktop flow) — Mac only
 - Todoist via `todoist-api-python` v4.0.0
-- GitHub via `PyGithub`
+- Garmin Connect via `garminconnect` (unofficial, sleep/HRV/RHR/body battery) — Mac only
+- GitHub via `PyGithub` — PC only
+- Open-Meteo weather API (no key required) — Mac only
 - Secrets via `.env` + `python-dotenv`
 
 ## Project Structure
 ```
 agent/
-├── personalhq/
-│   └── morning_briefing.py   # Gmail + Calendar + Todoist -> Claude -> Notion
-├── workhorse/
-│   ├── session_start.py      # Last debrief + GitHub -> Claude -> Notion (project-filtered)
-│   └── session_debrief.py    # Interactive input + GitHub -> Claude -> Notion (project-tagged)
-├── shared/
-│   ├── claude_helper.py      # Thin wrapper: summarize() function
-│   └── notion_helper.py      # All Notion read/write operations
-├── .env                      # Real secrets (NEVER commit)
-├── .env.example              # Template listing all required keys
+├── personalhq/                    # MacBook only
+│   ├── morning_briefing.py        # Gmail + Calendar + Todoist + Garmin -> Claude -> Notion
+│   ├── garmin_helper.py           # Garmin Connect auth + sleep/HRV/RHR/body battery fetch
+│   └── summary_voice.md           # Voice spec for briefing summary section
+├── workhorse/                     # PC only
+│   ├── session_start.py           # Last debrief + GitHub -> Claude -> Notion (project-filtered)
+│   └── session_debrief.py         # Interactive input + GitHub -> Claude -> Notion (project-tagged)
+├── shared/                        # Both machines
+│   ├── claude_helper.py           # Thin wrapper: summarize() function
+│   └── notion_helper.py           # All Notion read/write operations
+├── run_briefing.sh                # Wrapper for launchd/Shortcuts (Mac only)
+├── garmin_tokens/                  # Garmin session cache (gitignored)
+├── .env                           # Real secrets (NEVER commit)
+├── .env.example                   # Template listing all required keys
 ├── .gitignore
-├── credentials.json          # Google OAuth client secret (NEVER commit)
-├── token.json                # Auto-generated Google OAuth token (NEVER commit)
-└── requirements.txt
+├── credentials.json               # Google OAuth client secret (NEVER commit)
+├── token.json                     # Auto-generated Google OAuth token (NEVER commit)
+├── requirements.txt               # All deps (union)
+├── requirements-base.txt          # Shared deps (both machines)
+├── requirements-mac.txt           # Mac-only deps (includes base)
+└── requirements-pc.txt            # PC-only deps (includes base)
 ```
 
 ## Key Design Decisions
@@ -86,8 +110,11 @@ cd agent && python workhorse/session_debrief.py
 | `TODOIST_API_TOKEN` | Todoist | From Settings > Integrations > Developer |
 | `GITHUB_TOKEN` | GitHub | Personal access token |
 | `GITHUB_REPOS` | GitHub | Format: `owner/repo1,owner/repo2` |
-| `GOOGLE_CREDENTIALS_PATH` | Google | Default: `credentials.json` |
-| `GOOGLE_TOKEN_PATH` | Google | Default: `token.json` |
+| `GOOGLE_CREDENTIALS_PATH` | Google | Default: `credentials.json` (Mac only) |
+| `GOOGLE_TOKEN_PATH` | Google | Default: `token.json` (Mac only) |
+| `WEATHER_LOCATION` | Open-Meteo | City name, e.g. `Tel Aviv` (Mac only) |
+| `GARMIN_EMAIL` | Garmin Connect | Garmin account email (Mac only) |
+| `GARMIN_PASSWORD` | Garmin Connect | Garmin account password (Mac only) |
 
 ## Notion Database Schemas
 
@@ -116,13 +143,15 @@ cd agent && python workhorse/session_debrief.py
 
 All databases must have the Jarvis1.0 integration connected (database `...` menu > Connections). Missing properties (Date, Project, Status) are auto-created via the Notion API on first use.
 
-## Current Status (updated 2026-04-05)
+## Current Status (updated 2026-04-06)
 
 ### Working
-- morning_briefing.py — fully tested, redesigned Notion page (callout summary, formatted calendar schedule, emoji headings, dividers), auto-opens in browser
+- morning_briefing.py — fully tested, redesigned Notion page (callout summary, formatted calendar schedule, emoji headings, dividers), auto-opens in browser on TTY / notification only on launchd
 - **Summary voice spec externalized (2026-04-05)** — voice rules now live in [agent/personalhq/summary_voice.md](agent/personalhq/summary_voice.md) as prose + annotated examples + anti-examples, loaded at runtime and injected into `BRIEFING_SYSTEM_PROMPT`. Edit that file (not the Python prompt) when tuning voice. Structural/parsing requirements (required headings, `[OVERDUE]`/`[TODAY]` tag preservation) stay in `BRIEFING_SYSTEM_PROMPT` in [morning_briefing.py](agent/personalhq/morning_briefing.py) next to the parser. Approved example: *"Good morning, Amit. Mild and partly cloudy out there with a light breeze — you've got a solid day lined up with deep work, a session at Machon Weizmann..."*
 - **Weather integration (2026-04-05)** — Open-Meteo (no API key). `WEATHER_LOCATION` env var (use spaces not hyphens). Returns feel phrases (sky+temp+wind) with NO numeric temperatures
 - **Task tagging (2026-04-05)** — tasks pre-tagged `[OVERDUE]`/`[TODAY]` in the prompt input; overdue strictly means `due.date < today`
+- **Garmin integration implemented (2026-04-06)** — `garmin_helper.py` written, wired into `morning_briefing.py`, Notion `_build_briefing_blocks()` updated for Body section. All code verified (syntax OK). End-to-end test passed WITHOUT Garmin (graceful degradation confirmed — briefing runs fine, Body section simply absent). launchd job loaded and confirmed registered (`com.jarvis.briefing`, fires at 5:30 AM / on wake). `run_briefing.sh` wrapper with 60-min dedup lock in place.
+- **Garmin auth NOT yet validated (2026-04-06)** — Hit Garmin's Cloudflare 429 rate limit during initial auth testing (~8 attempts across test runs). Code is correct; needs one successful auth to cache tokens in `agent/garmin_tokens/`. Rate limit clears in ~30-60 min. **Next step: run `python personalhq/garmin_helper.py` from terminal once rate limit is clear (wait at least 30 min since last attempt). If it prompts for MFA code, enter it — tokens cache and this never happens again.**
 - session_start.py — writes to Notion Session Start DB with project filtering, auto-opens in browser
 - session_debrief.py — writes to Notion with project tagging, Claude synthesizes user notes + GitHub commit details into insightful debrief
 - Project-based context switching — debrief tagged with project name, session start filters by project to pull relevant history
@@ -130,12 +159,11 @@ All databases must have the Jarvis1.0 integration connected (database `...` menu
 - All APIs authenticated and confirmed working (Claude, Notion, Gmail, Calendar, Todoist, GitHub, Open-Meteo)
 
 ### Not Yet Done
-- Automate morning briefing to run at 7am (cron on Mac, Task Scheduler on PC)
+- **Garmin auth first-time validation** — run `python personalhq/garmin_helper.py` from terminal (at least 30-60 min after last attempt, ~10:45 AM on 2026-04-06). Enter MFA code if prompted. Then run full briefing to verify Body section in Notion.
 - Automate session debrief so it doesn't require running from terminal
-- Pair MacBook (PersonalHQ) for additional data sources (notes, Apple Health, etc.)
 - No unit tests yet
 - Gmail query tuning — returned 0 unread during testing (verify on a day with actual unread mail)
-- Claude occasionally slips banned corporate filler words ("solid day", "deep work" name-checks) despite explicit DON'T list — user has tolerated it but keep an eye on it
+- Claude occasionally slips corporate filler words despite voice spec — user has tolerated it but keep an eye on it
 
 ### Iteration workflow
 User reviews briefings via Notion page comments. Fetch via `notion-get-comments` MCP tool after each run and iterate the prompt based on feedback.
@@ -154,10 +182,11 @@ cd agent && python workhorse/session_start.py
 
 ## Briefing Page Layout
 The morning briefing Notion page uses a structured layout built by `_build_briefing_blocks()`:
-1. **☀️ Summary callout** (yellow) — 2-3 sentence overview of the day
-2. **📅 Today's Schedule** — formatted event list with times (e.g. `9:00 AM – 10:00 AM — Meeting`)
-3. **📧 Email Highlights** — bullet points of actionable emails
-4. **✅ Today's Tasks** — today's + overdue Todoist tasks only
+1. **☀️ Summary callout** (yellow) — greeting + one flowing sentence about the day
+2. **💪 Body** (if Garmin data available) — sleep, HRV, resting HR interpreted with training recommendations
+3. **📅 Today's Schedule** — formatted event list with times (e.g. `9:00 AM – 10:00 AM — Meeting`)
+4. **📧 Email Highlights** — bullet points of actionable emails
+5. **✅ Today's Tasks** — today's + overdue Todoist tasks only
 
 The session start page uses `_build_session_start_blocks()`:
 1. **🔄 Recap callout** (blue) — last session summary

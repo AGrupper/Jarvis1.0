@@ -231,6 +231,14 @@ def _build_briefing_blocks(
             blocks.append({"divider": {}})
             break
 
+    # Body section (readiness) → if present, insert between summary and calendar
+    for name in list(sections.keys()):
+        if "body" in name.lower():
+            blocks.append({"heading_2": {"rich_text": _chunk_rich_text(f"💪 {name}")}})
+            blocks.extend(_markdown_to_notion_blocks(sections.pop(name)))
+            blocks.append({"divider": {}})
+            break
+
     # Calendar section with formatted events
     blocks.append({"heading_2": {"rich_text": _chunk_rich_text("📅 Today's Schedule")}})
     if events:
@@ -245,7 +253,7 @@ def _build_briefing_blocks(
     blocks.append({"divider": {}})
 
     # Remaining sections with emoji headings
-    section_icons = {"email": "📧", "task": "✅"}
+    section_icons = {"email": "📧", "task": "✅", "body": "💪"}
     for name, content in sections.items():
         icon = ""
         for key, emoji in section_icons.items():

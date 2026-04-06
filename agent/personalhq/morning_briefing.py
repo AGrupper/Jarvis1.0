@@ -7,6 +7,7 @@ First run requires interactive OAuth consent (opens browser).
 import os
 import sys
 import logging
+import subprocess
 import webbrowser
 from datetime import date, datetime, timezone, timedelta
 from pathlib import Path
@@ -31,6 +32,7 @@ AGENT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(AGENT_ROOT))
 from shared.claude_helper import summarize
 from shared.notion_helper import create_briefing_page
+from personalhq.garmin_helper import fetch_garmin_readiness
 
 # Load .env from agent/ root
 load_dotenv(AGENT_ROOT / ".env")
@@ -71,6 +73,19 @@ Follow the voice spec above. Greeting + one flowing sentence.
 
 ## Email Highlights
 Key emails that need attention. Skip newsletters and automated notifications unless they contain action items. Use bullet points.
+
+## Body
+Only include this section if readiness data is provided in the input. Report sleep duration, sleep score, HRV status, resting HR — concisely, as facts. Then INTERPRET the data: if the anomalies list has items, make a recovery/workload call. If today's calendar has training events, connect the readiness state to them — "skip the run tonight," "good day to push on the ride," or recommend specific adjustments like "swap the intervals for an easy spin." Help Amit decide — don't hedge, don't just list metrics. If numbers are solid, say so decisively and clear him to push. If numbers are off, say what he should do about it.
+
+Voice: same warm, understated, friend-giving-a-rundown tone as the summary. Not corporate wellness, not a dashboard.
+
+Good examples:
+- "Slept 7h 20m, HRV balanced, resting HR where it usually sits. You're dialed in — go do the thing."
+- "Only 5h 40m last night and HRV ran low. Skip the run tonight or keep it easy — that comes back faster than pushing through."
+- "Resting HR is up 6 bpm and body battery is low — could be early cold signs. Take it easy today, hydrate, don't force anything."
+- "Numbers are off — swap the intervals for an easy Z2 spin tonight, save the hard session for tomorrow."
+
+Bad: just listing numbers without interpretation ("Slept 5h 40m. HRV low. Resting HR 60 bpm."). If no anomalies and no training events: one short sentence is enough.
 
 ## Today's Tasks
 Tasks organized by priority. The input marks each task with [OVERDUE] or [TODAY]. Preserve the [OVERDUE] tag in your output for those items. Do NOT add [OVERDUE] to tasks marked [TODAY]. Use bullet points.
@@ -377,6 +392,7 @@ def generate_briefing(
     events: list[dict],
     tasks: list[dict],
     weather: dict | None = None,
+    readiness: dict | None = None,
 ) -> str:
     """Format raw data and send to Claude for summarization."""
 
@@ -401,6 +417,34 @@ def generate_briefing(
             f"Location: {weather['location']}\n"
             f"Sky and temperature: {weather['feel']}.{wind_line}"
         )
+
+    # Garmin readiness (Body section)
+    if readiness:
+        sleep = readiness.get("sleep", {})
+        hrv = readiness.get("hrv", {})
+        rhr = readiness.get("resting_hr", {})
+        bb = readiness.get("body_battery_morning")
+        anomalies = readiness.get("anomalies", [])
+
+        lines = ["\n=== READINESS (Garmin) ==="]
+        if sleep.get("duration"):
+            lines.append(f"Sleep: {sleep['duration']} (score: {sleep.get('score', 'N/A')})")
+            lines.append(f"  Bedtime: {sleep.get('bedtime', '?')} → Wake: {sleep.get('wake_time', '?')}")
+            if sleep.get("stages"):
+                lines.append(f"  Stages: {sleep['stages']}")
+        if hrv.get("value_ms") is not None:
+            baseline_str = f" (baseline: {hrv['baseline_ms']}ms)" if hrv.get("baseline_ms") else ""
+            lines.append(f"HRV: {hrv['value_ms']}ms, status: {hrv.get('status', 'unknown')}{baseline_str}")
+        if rhr.get("value") is not None:
+            baseline_str = f" (baseline: {rhr['baseline']})" if rhr.get("baseline") else ""
+            lines.append(f"Resting HR: {rhr['value']} bpm{baseline_str}")
+        if bb is not None:
+            lines.append(f"Body Battery (morning): {bb}")
+        if anomalies:
+            lines.append(f"ANOMALIES: {'; '.join(anomalies)}")
+        else:
+            lines.append("ANOMALIES: none")
+        sections.extend(lines)
 
     # Calendar events (context for the summary — shown via Notion Calendar, not as a section)
     sections.append(f"\n=== TODAY'S CALENDAR ({len(events)}) ===")
@@ -463,28 +507,41 @@ def main() -> None:
     events = fetch_todays_events(creds)
     tasks = fetch_active_tasks()
     weather = fetch_weather()
+    readiness = fetch_garmin_readiness()
 
     if not emails and not events and not tasks:
         logger.warning("No data from any source. Skipping briefing.")
         return
 
     logger.info(
-        "Data collected: %d emails, %d events, %d tasks, weather=%s",
-        len(emails), len(events), len(tasks), "yes" if weather else "no",
+        "Data collected: %d emails, %d events, %d tasks, weather=%s, garmin=%s",
+        len(emails), len(events), len(tasks),
+        "yes" if weather else "no",
+        "yes" if readiness else "no",
     )
 
     # 3. Generate Claude summary
-    summary = generate_briefing(emails, events, tasks, weather=weather)
+    summary = generate_briefing(emails, events, tasks, weather=weather, readiness=readiness)
     logger.info("Generated briefing (%d chars).", len(summary))
 
     # 4. Write to Notion
     page_id = create_briefing_page(briefing_date=date.today(), summary_markdown=summary, events=events)
     logger.info("Notion page created: %s", page_id)
 
-    # 5. Open the briefing page in Notion
+    # 5. Notify / open the briefing page
     page_url = f"https://notion.so/{page_id.replace('-', '')}"
-    webbrowser.open(page_url)
-    logger.info("Opened briefing in browser.")
+
+    # Always: native macOS notification
+    subprocess.run([
+        "osascript", "-e",
+        'display notification "Tap to view in Notion" with title "Morning briefing ready" sound name "Ping"',
+    ], check=False)
+    logger.info("Sent macOS notification.")
+
+    # Interactive runs only: also open browser
+    if sys.stdout.isatty():
+        webbrowser.open(page_url)
+        logger.info("Opened briefing in browser.")
 
     logger.info("=== Morning briefing complete ===")
 
