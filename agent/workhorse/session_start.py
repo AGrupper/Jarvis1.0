@@ -4,6 +4,7 @@ Run manually at the start of a work session:
     cd agent && python workhorse/session_start.py
 """
 
+import argparse
 import os
 import sys
 import subprocess
@@ -110,8 +111,11 @@ def main() -> None:
     except Exception as e:
         logger.warning("git pull skipped: %s", e)
 
-    # 1. Ask what the user is working on today
-    project = input("What are you working on today? ").strip() or None
+    # 1. Ask what the user is working on today (or accept via --project arg)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--project", default=None, help="Project context (skips interactive prompt)")
+    args, _ = parser.parse_known_args()
+    project = args.project or input("What are you working on today? ").strip() or None
     if project:
         logger.info("Project context: %s", project)
 

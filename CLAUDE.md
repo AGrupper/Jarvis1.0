@@ -143,7 +143,7 @@ cd agent && python workhorse/session_debrief.py
 
 All databases must have the Jarvis1.0 integration connected (database `...` menu > Connections). Missing properties (Date, Project, Status) are auto-created via the Notion API on first use.
 
-## Current Status (updated 2026-04-06)
+## Current Status (updated 2026-04-06, session 2)
 
 ### Working
 - morning_briefing.py — fully tested, redesigned Notion page (callout summary, formatted calendar schedule, emoji headings, dividers), auto-opens in browser on TTY / notification only on launchd
@@ -153,6 +153,7 @@ All databases must have the Jarvis1.0 integration connected (database `...` menu
 - **Garmin integration implemented (2026-04-06)** — `garmin_helper.py` written, wired into `morning_briefing.py`, Notion `_build_briefing_blocks()` updated for Body section. All code verified (syntax OK). End-to-end test passed WITHOUT Garmin (graceful degradation confirmed — briefing runs fine, Body section simply absent). launchd job loaded and confirmed registered (`com.jarvis.briefing`, fires at 5:30 AM / on wake). `run_briefing.sh` wrapper with 60-min dedup lock in place.
 - **Garmin auth — two-phase login implemented (2026-04-06)** — `_get_client()` now tries token-only login first (`Garmin(email=None, password=None)`), then falls back to credential login only if no cached tokens exist. This avoids Cloudflare entirely on all runs after the first. Previous approach (always constructing with credentials) hit Cloudflare 429/403 rate limits after ~8 attempts. **First run on Mac still required** — run `python personalhq/garmin_helper.py` from terminal, enter MFA code if prompted, tokens cache to `agent/garmin_tokens/` and credential login never happens again.
 - **Auto-sync from GitHub on session start (2026-04-06)** — `session_start.py` now runs `git pull` at the top of `main()` so the PC is always synced from the latest MacBook commits before starting work. Non-fatal: logs a warning and continues if there's no internet or a conflict.
+- **`/start-session` Claude Code skill (2026-04-06)** — global slash command at `~/.claude/commands/start-session.md` (PC only). Type `/start-session` in any Claude Code session; it detects the project from the open workspace folder name (e.g. "Jarvis1.0" → "Jarvis") and runs `session_start.py --project <name>` non-interactively. `session_start.py` now accepts `--project` arg to skip the interactive prompt; running it directly still prompts as before.
 - session_start.py — writes to Notion Session Start DB with project filtering, auto-opens in browser
 - session_debrief.py — writes to Notion with project tagging, Claude synthesizes user notes + GitHub commit details into insightful debrief
 - Project-based context switching — debrief tagged with project name, session start filters by project to pull relevant history
@@ -177,8 +178,10 @@ python -c "from dotenv import load_dotenv; load_dotenv('.env'); import os; print
 # Full morning briefing test:
 cd agent && python personalhq/morning_briefing.py
 
-# Session start test:
+# Session start test (interactive prompt):
 cd agent && python workhorse/session_start.py
+# Session start with project pre-set (non-interactive, used by /start-session skill):
+cd agent && python workhorse/session_start.py --project Jarvis
 ```
 
 ## Briefing Page Layout
