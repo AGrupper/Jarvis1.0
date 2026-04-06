@@ -19,11 +19,11 @@ Jarvis 1.0 is a personal AI agent system spanning two machines (MacBook + PC) wi
 **Voice spec canonical location:** [agent/personalhq/summary_voice.md](agent/personalhq/summary_voice.md). Edit there when tuning the summary's voice/tone. This entry keeps only non-voice guidance (layout, task behavior, weather infra, iteration workflow).
 
 ### Page layout
-Layout: Summary callout → Calendar (formatted event list) → Email Highlights → Today's Tasks. NO "Priority Actions" or "Quick Notes" sections.
+Layout: Summary callout → Body (Garmin readiness, only if data available) → Calendar (formatted event list) → Email Highlights → Today's Tasks. NO "Priority Actions" or "Quick Notes" sections.
 
-**Why:** User finds those sections redundant — a good summary already covers both. Prefers concise, at-a-glance pages.
+**Why:** User finds those sections redundant — a good summary already covers both. Prefers concise, at-a-glance pages. Body section added 2026-04-06 for Garmin sleep/HRV/readiness interpretation.
 
-**How to apply:** Don't re-add cut sections even if they'd seem useful. The briefing is tuned for glanceability, not completeness.
+**How to apply:** Don't re-add cut sections even if they'd seem useful. The briefing is tuned for glanceability, not completeness. Body section is conditional — only present when Garmin data is available (graceful degradation if Garmin is offline).
 
 ### Today's Tasks section
 - Only today's + overdue Todoist tasks (never all active).

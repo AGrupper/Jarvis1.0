@@ -5,7 +5,9 @@
       "mcp__claude_ai_Notion__notion-fetch",
       "Bash(git add:*)",
       "Bash(git commit -m ':*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(python personalhq/morning_briefing.py)",
+      "Bash(git restore:*)"
     ]
   }
 }

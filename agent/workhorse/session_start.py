@@ -6,6 +6,7 @@ Run manually at the start of a work session:
 
 import os
 import sys
+import subprocess
 import logging
 import webbrowser
 from datetime import datetime, timezone, timedelta
@@ -92,6 +93,22 @@ def fetch_github_activity(repos: list[str], since_hours: int = 48) -> str:
 def main() -> None:
     """Load last debrief + GitHub activity, generate session start summary."""
     logger.info("=== Session Start ===")
+
+    # Auto-sync from GitHub before starting session
+    repo_root = AGENT_ROOT.parent
+    try:
+        result = subprocess.run(
+            ["git", "pull"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+        )
+        if result.stdout.strip():
+            logger.info("git pull: %s", result.stdout.strip())
+        if result.returncode != 0:
+            logger.warning("git pull failed: %s", result.stderr.strip())
+    except Exception as e:
+        logger.warning("git pull skipped: %s", e)
 
     # 1. Ask what the user is working on today
     project = input("What are you working on today? ").strip() or None
