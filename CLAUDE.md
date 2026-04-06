@@ -160,7 +160,7 @@ All databases must have the Jarvis1.0 integration connected (database `...` menu
 - All APIs authenticated and confirmed working (Claude, Notion, Gmail, Calendar, Todoist, GitHub, Open-Meteo)
 
 ### Not Yet Done
-- **Garmin first-time token generation (Mac)** — run `cd agent && python personalhq/garmin_helper.py` from a terminal on the Mac. Enter MFA code if prompted. Tokens cache to `agent/garmin_tokens/` (gitignored). Then run full briefing to verify Body section appears in Notion.
+- **Garmin first-time token generation (Mac)** — run `cd agent && python personalhq/garmin_helper.py` from a terminal on the Mac. Enter MFA code if prompted. Tokens cache to `agent/garmin_tokens/` (gitignored). Then run full briefing to verify Body section appears in Notion. **Rate limit warning:** Garmin's Cloudflare blocks repeated programmatic logins — multiple attempts on 2026-04-06 triggered 429/403 lockout. Wait several hours (ideally overnight) between attempts. Do NOT retry in a loop — each failed attempt extends the lockout. The launchd 5:30 AM briefing will also attempt this automatically once the lock clears.
 - Automate session debrief so it doesn't require running from terminal
 - No unit tests yet
 - Gmail query tuning — returned 0 unread during testing (verify on a day with actual unread mail)
