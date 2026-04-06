@@ -154,6 +154,8 @@ All databases must have the Jarvis1.0 integration connected (database `...` menu
 - **Garmin auth — two-phase login implemented (2026-04-06)** — `_get_client()` now tries token-only login first (`Garmin(email=None, password=None)`), then falls back to credential login only if no cached tokens exist. This avoids Cloudflare entirely on all runs after the first. Previous approach (always constructing with credentials) hit Cloudflare 429/403 rate limits after ~8 attempts. **First run on Mac still required** — run `python personalhq/garmin_helper.py` from terminal, enter MFA code if prompted, tokens cache to `agent/garmin_tokens/` and credential login never happens again.
 - **Auto-sync from GitHub on session start (2026-04-06)** — `session_start.py` now runs `git pull` at the top of `main()` so the PC is always synced from the latest MacBook commits before starting work. Non-fatal: logs a warning and continues if there's no internet or a conflict.
 - **`/start-session` Claude Code skill (2026-04-06)** — global slash command at `~/.claude/commands/start-session.md` (PC only). Type `/start-session` in any Claude Code session; it detects the project from the open workspace folder name (e.g. "Jarvis1.0" → "Jarvis") and runs `session_start.py --project <name>` non-interactively. `session_start.py` now accepts `--project` arg to skip the interactive prompt; running it directly still prompts as before.
+- **`/end-session` Claude Code skill (2026-04-06)** — global slash command at `~/.claude/commands/end-session.md` (PC only). Type "end session" at the end of any session; Claude automatically: (1) updates CLAUDE.md Current Status, (2) commits + pushes all changes, (3) runs `session_debrief.py`. No user input at any step.
+- **`session_debrief.py` fully automated (2026-04-06)** — no user input. Fetches GitHub commits since the last session debrief (from Notion), sends them to Claude API to generate the three-section debrief, writes to Notion, auto-opens in browser. Exit code 2 = no commits found (used by `/end-session` to fall back to conversation-based debrief via `--from-json`). Optional `--project` arg overrides auto-detection; standalone auto-detects from `GITHUB_REPOS` env var.
 - session_start.py — writes to Notion Session Start DB with project filtering, auto-opens in browser
 - session_debrief.py — writes to Notion with project tagging, Claude synthesizes user notes + GitHub commit details into insightful debrief
 - Project-based context switching — debrief tagged with project name, session start filters by project to pull relevant history
@@ -162,7 +164,7 @@ All databases must have the Jarvis1.0 integration connected (database `...` menu
 
 ### Not Yet Done
 - **Garmin first-time token generation (Mac)** — run `cd agent && python personalhq/garmin_helper.py` from a terminal on the Mac. Enter MFA code if prompted. Tokens cache to `agent/garmin_tokens/` (gitignored). Then run full briefing to verify Body section appears in Notion. **Rate limit warning:** Garmin's Cloudflare blocks repeated programmatic logins — multiple attempts on 2026-04-06 triggered 429/403 lockout. Wait several hours (ideally overnight) between attempts. Do NOT retry in a loop — each failed attempt extends the lockout. The launchd 5:30 AM briefing will also attempt this automatically once the lock clears.
-- Automate session debrief so it doesn't require running from terminal
+- ~~Automate session debrief~~ — done via `/end-session` skill + fully-automated `session_debrief.py`
 - No unit tests yet
 - Gmail query tuning — returned 0 unread during testing (verify on a day with actual unread mail)
 - Claude occasionally slips corporate filler words despite voice spec — user has tolerated it but keep an eye on it
@@ -178,10 +180,15 @@ python -c "from dotenv import load_dotenv; load_dotenv('.env'); import os; print
 # Full morning briefing test:
 cd agent && python personalhq/morning_briefing.py
 
-# Session start test (interactive prompt):
+# Session start (interactive prompt):
 cd agent && python workhorse/session_start.py
-# Session start with project pre-set (non-interactive, used by /start-session skill):
+# Session start non-interactive (used by /start-session skill):
 cd agent && python workhorse/session_start.py --project Jarvis
+
+# Session debrief (fully automated — no prompts):
+cd agent && python workhorse/session_debrief.py
+# Debrief with project override:
+cd agent && python workhorse/session_debrief.py --project Jarvis
 ```
 
 ## Briefing Page Layout
