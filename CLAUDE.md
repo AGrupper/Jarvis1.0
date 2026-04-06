@@ -143,7 +143,7 @@ cd agent && python workhorse/session_debrief.py
 
 All databases must have the Jarvis1.0 integration connected (database `...` menu > Connections). Missing properties (Date, Project, Status) are auto-created via the Notion API on first use.
 
-## Current Status (updated 2026-04-06, session 2)
+## Current Status (updated 2026-04-06, session 3)
 
 ### Working
 - morning_briefing.py — fully tested, redesigned Notion page (callout summary, formatted calendar schedule, emoji headings, dividers), auto-opens in browser on TTY / notification only on launchd
@@ -157,7 +157,6 @@ All databases must have the Jarvis1.0 integration connected (database `...` menu
 - **`/end-session` Claude Code skill (2026-04-06)** — global slash command at `~/.claude/commands/end-session.md` (PC only). Type "end session" at the end of any session; Claude automatically: (1) updates CLAUDE.md Current Status, (2) commits + pushes all changes, (3) runs `session_debrief.py`. No user input at any step.
 - **`session_debrief.py` fully automated (2026-04-06)** — no user input. Fetches GitHub commits since the last session debrief (from Notion), sends them to Claude API to generate the three-section debrief, writes to Notion, auto-opens in browser. Exit code 2 = no commits found (used by `/end-session` to fall back to conversation-based debrief via `--from-json`). Optional `--project` arg overrides auto-detection; standalone auto-detects from `GITHUB_REPOS` env var.
 - session_start.py — writes to Notion Session Start DB with project filtering, auto-opens in browser
-- session_debrief.py — writes to Notion with project tagging, Claude synthesizes user notes + GitHub commit details into insightful debrief
 - Project-based context switching — debrief tagged with project name, session start filters by project to pull relevant history
 - Google OAuth — token.json saved, no browser popup needed on subsequent runs
 - All APIs authenticated and confirmed working (Claude, Notion, Gmail, Calendar, Todoist, GitHub, Open-Meteo)
