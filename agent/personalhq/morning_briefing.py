@@ -131,6 +131,11 @@ def get_google_credentials() -> Credentials:
             creds = None
 
     if not creds or not creds.valid:
+        if not sys.stdin.isatty():
+            raise RuntimeError(
+                "Google OAuth token expired and no TTY available for re-auth. "
+                "Run morning_briefing.py manually from a terminal to re-authenticate."
+            )
         flow = InstalledAppFlow.from_client_secrets_file(str(creds_path), SCOPES)
         creds = flow.run_local_server(port=0)
         logger.info("OAuth consent completed. Saving token.")

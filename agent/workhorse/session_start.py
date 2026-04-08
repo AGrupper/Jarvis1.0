@@ -62,7 +62,7 @@ def fetch_github_activity(repos: list[str], since_hours: int = 48) -> str:
             parts = [f"\n## {repo_name}"]
 
             # Recent commits
-            commits = list(repo.get_commits(since=since)[:5])
+            commits = list(repo.get_commits(since=since))[:5]
             if commits:
                 parts.append("### Recent Commits")
                 for c in commits:
@@ -70,14 +70,14 @@ def fetch_github_activity(repos: list[str], since_hours: int = 48) -> str:
                     parts.append(f"- {c.sha[:7]} {short_msg}")
 
             # Open PRs
-            prs = list(repo.get_pulls(state="open")[:5])
+            prs = list(repo.get_pulls(state="open"))[:5]
             if prs:
                 parts.append("### Open PRs")
                 for pr in prs:
                     parts.append(f"- #{pr.number} {pr.title}")
 
             # Issues assigned to user
-            issues = list(repo.get_issues(assignee=username, state="open")[:5])
+            issues = list(repo.get_issues(assignee=username, state="open"))[:5]
             if issues:
                 parts.append("### My Open Issues")
                 for issue in issues:

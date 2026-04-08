@@ -1,6 +1,7 @@
 """Garmin Connect helper: auth, fetch sleep/HRV/RHR/body battery, shape for briefing."""
 
 import os
+import signal
 import time
 import logging
 from datetime import date, datetime
@@ -12,6 +13,10 @@ logger = logging.getLogger(__name__)
 
 AGENT_ROOT = Path(__file__).resolve().parent.parent
 TOKENSTORE = AGENT_ROOT / "garmin_tokens"
+
+
+def _timeout_handler(signum, frame):
+    raise TimeoutError("Garmin fetch timed out")
 
 
 def _prompt_mfa() -> str:
@@ -277,30 +282,40 @@ def fetch_garmin_readiness(
     target = target_date or date.today()
     date_str = target.isoformat()
 
-    client = _get_client()
-    if not client:
+    signal.signal(signal.SIGALRM, _timeout_handler)
+    signal.alarm(180)  # 3-minute hard timeout for the entire Garmin flow
+    try:
+        client = _get_client()
+        if not client:
+            return None
+
+        for attempt in range(max_retries):
+            try:
+                raw = _fetch_once(client, date_str)
+                if raw:
+                    shaped = _shape(raw)
+                    if shaped.get("sleep", {}).get("duration"):
+                        logger.info("Garmin readiness fetched for %s.", date_str)
+                        return shaped
+            except TimeoutError:
+                raise
+            except Exception as e:
+                logger.warning("Garmin fetch error (attempt %d): %s", attempt + 1, e)
+
+            if attempt < max_retries - 1:
+                logger.info(
+                    "Garmin sync not ready (attempt %d/%d), waiting %ds...",
+                    attempt + 1, max_retries, retry_delay,
+                )
+                time.sleep(retry_delay)
+
+        logger.warning("Garmin data unavailable after %d retries — skipping Body section.", max_retries)
         return None
-
-    for attempt in range(max_retries):
-        try:
-            raw = _fetch_once(client, date_str)
-            if raw:
-                shaped = _shape(raw)
-                if shaped.get("sleep", {}).get("duration"):
-                    logger.info("Garmin readiness fetched for %s.", date_str)
-                    return shaped
-        except Exception as e:
-            logger.warning("Garmin fetch error (attempt %d): %s", attempt + 1, e)
-
-        if attempt < max_retries - 1:
-            logger.info(
-                "Garmin sync not ready (attempt %d/%d), waiting %ds...",
-                attempt + 1, max_retries, retry_delay,
-            )
-            time.sleep(retry_delay)
-
-    logger.warning("Garmin data unavailable after %d retries — skipping Body section.", max_retries)
-    return None
+    except TimeoutError:
+        logger.warning("Garmin fetch timed out after 3 minutes — skipping Body section.")
+        return None
+    finally:
+        signal.alarm(0)  # Cancel the alarm
 
 
 # ---------------------------------------------------------------------------

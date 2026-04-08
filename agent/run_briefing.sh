@@ -1,7 +1,6 @@
 #!/bin/bash
 # Jarvis 1.0 — morning briefing wrapper for launchd / Shortcuts automation.
 # Activates venv, runs briefing, logs output, de-dups within 60 min.
-set -e
 
 LOGFILE="$HOME/jarvis-venv/briefing.log"
 LOCKFILE="$HOME/jarvis-venv/briefing.lastrun"
@@ -14,6 +13,13 @@ fi
 
 echo "=== Run at $(date) ===" >> "$LOGFILE"
 cd /Users/amitgrupper/Jarvis1.0/agent
-/Users/amitgrupper/jarvis-venv/bin/python personalhq/morning_briefing.py >> "$LOGFILE" 2>&1
-date +%s > "$LOCKFILE"
-echo "=== Completed at $(date) ===" >> "$LOGFILE"
+
+# 10-minute hard timeout prevents a hung process from blocking future launchd runs.
+# Uses perl alarm since macOS doesn't ship GNU timeout.
+if /usr/bin/perl -e 'alarm 600; exec @ARGV' -- \
+    /Users/amitgrupper/jarvis-venv/bin/python personalhq/morning_briefing.py >> "$LOGFILE" 2>&1; then
+  date +%s > "$LOCKFILE"
+  echo "=== Completed at $(date) ===" >> "$LOGFILE"
+else
+  echo "=== FAILED at $(date) (exit code $?) ===" >> "$LOGFILE"
+fi
