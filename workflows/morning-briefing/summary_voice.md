@@ -1,6 +1,6 @@
 # Morning Briefing — Summary Voice Spec
 
-This is the canonical voice specification for the morning briefing's summary callout. Edit this file when tuning voice. The structural/parsing contract (required headings, tag preservation) lives in `BRIEFING_SYSTEM_PROMPT` in `morning_briefing.py` and should not be duplicated here.
+This is the canonical voice specification for the morning briefing's summary callout. Edit this file when tuning voice. The structural/parsing contract (required headings, tag preservation) lives in `2-write-briefing.md` (same directory) and should not be duplicated here.
 
 ## Who this is for
 

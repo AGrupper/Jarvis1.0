@@ -1,212 +1,164 @@
 # Jarvis 1.0 — Personal AI Agent System
 
 ## Project Overview
-Two-machine personal AI agent system with Notion as the shared brain.
+Personal AI agent system using Claude Code workflows + MCP tools with Notion as the shared brain. No Python scripts — everything runs via `.md` workflow files and Claude Code skills.
 
-- **PersonalHQ** (MacBook) — morning briefing via launchd (5:30 AM, fires on wake)
-- **WorkHorse** (PC) — manual session start/debrief scripts (both write to Notion + auto-open)
+- **Morning briefing** — scheduled via RemoteTrigger (cloud, daily 9 AM Israel time). Fetches Gmail, Calendar, Weather, writes to Notion.
+- **Session start/debrief** — Claude Code skills (`/start-session`, `/end-session`). Run interactively in any Claude Code session.
 
 **Collaboration context:** see [MEMORY.md](MEMORY.md) for briefing design preferences, iteration workflow, and other Jarvis-specific context Claude should know about.
 
-## Machine Ownership
+## Architecture
 
-| Directory | Machine | What it does |
+### How it works (no Python)
+All logic lives in `.md` workflow files that instruct Claude agents what to do. Data is fetched via MCP tools (Gmail, Google Calendar, Notion) and WebFetch (weather API). Results are posted to Notion via the Notion MCP.
+
+### Scheduling
+- **Morning briefing**: RemoteTrigger `trig_01BsVkCiat4WG2UKTis8kw3p` — runs daily at 6:00 AM UTC (9:00 AM Israel). Cloud-based, Mac doesn't need to be on.
+- **Session start/debrief**: Invoked manually via `/start-session` and `/end-session` Claude Code slash commands.
+- Manage triggers at: https://claude.ai/code/scheduled
+
+### Billing
+- **Automated tasks** (morning briefing via RemoteTrigger): Billed against API account (pay-per-use). Does NOT consume subscription tokens.
+- **Interactive tasks** (session start/debrief): Run inside existing Claude Code sessions via Sonnet subagent — minimal incremental cost.
+
+### Model Selection
+| Workflow | Model | Why |
 |---|---|---|
-| `agent/personalhq/` | **MacBook only** | Morning briefing (Gmail + Calendar + Todoist + Garmin + Weather -> Claude -> Notion). Triggered by launchd at 5:30 AM (fires on wake if Mac was asleep). |
-| `agent/workhorse/` | **PC only** | Session start + debrief (GitHub + last debrief -> Claude -> Notion). Run manually from terminal. |
-| `agent/shared/` | **Both** | Common code: `claude_helper.py`, `notion_helper.py`. Changes here affect both machines. |
+| Morning briefing (RemoteTrigger) | **Sonnet 4.6** | Creative writing with voice spec + tool calling |
+| Session start | **Sonnet** (via subagent) | Structured summary |
+| Session debrief | **Sonnet** (via subagent) | Structured summary |
 
-**Requirements per machine:**
-- Mac: `pip install -r agent/requirements-mac.txt`
-- PC: `pip install -r agent/requirements-pc.txt`
-- `agent/requirements.txt` is the union of all deps (kept for backwards compat)
-
-**Do not** run `personalhq/` scripts on the PC or `workhorse/` scripts on the Mac — they depend on machine-specific APIs and credentials.
-
-## Tech Stack
-- Python 3.13 (primary on PC), 3.11+ compatible
-- Claude API (`claude-haiku-4-5-20251001`) via `anthropic` SDK
-- Notion via `notion-client` v3.0.0
-- Gmail + Google Calendar via `google-api-python-client` (OAuth2 Desktop flow) — Mac only
-- Todoist via `todoist-api-python` v4.0.0
-- Garmin Connect via `garminconnect` (unofficial, sleep/HRV/RHR/body battery) — Mac only
-- GitHub via `PyGithub` — PC only
-- Open-Meteo weather API (no key required) — Mac only
-- Secrets via `.env` + `python-dotenv`
+### Cross-Machine Sync
+All `.md` workflow files and skills live in the repo. `git push/pull` syncs between Mac and PC. Slash commands are symlinked from `skills/` to `~/.claude/commands/`.
 
 ## Project Structure
 ```
-agent/
-├── personalhq/                    # MacBook only
-│   ├── morning_briefing.py        # Gmail + Calendar + Todoist + Garmin -> Claude -> Notion
-│   ├── garmin_helper.py           # Garmin Connect auth + sleep/HRV/RHR/body battery fetch
-│   └── summary_voice.md           # Voice spec for briefing summary section
-├── workhorse/                     # PC only
-│   ├── session_start.py           # Last debrief + GitHub -> Claude -> Notion (project-filtered)
-│   └── session_debrief.py         # Interactive input + GitHub -> Claude -> Notion (project-tagged)
-├── shared/                        # Both machines
-│   ├── claude_helper.py           # Thin wrapper: summarize() function
-│   └── notion_helper.py           # All Notion read/write operations
-├── run_briefing.sh                # Wrapper for launchd/Shortcuts (Mac only)
-├── garmin_tokens/                  # Garmin session cache (gitignored)
-├── .env                           # Real secrets (NEVER commit)
-├── .env.example                   # Template listing all required keys
+Jarvis1.0/
+├── CLAUDE.md                         # This file
 ├── .gitignore
-├── credentials.json               # Google OAuth client secret (NEVER commit)
-├── token.json                     # Auto-generated Google OAuth token (NEVER commit)
-├── requirements.txt               # All deps (union)
-├── requirements-base.txt          # Shared deps (both machines)
-├── requirements-mac.txt           # Mac-only deps (includes base)
-└── requirements-pc.txt            # PC-only deps (includes base)
+├── workflows/
+│   └── morning-briefing/
+│       ├── 1-fetch-data.md           # Instructions: fetch Gmail, Calendar, Weather
+│       ├── 2-write-briefing.md       # Instructions: write summary + post to Notion
+│       └── summary_voice.md          # Voice spec for briefing summary section
+├── skills/
+│   ├── start-session.md              # Claude Code skill: fetch last debrief + GitHub, write to Notion
+│   └── end-session.md                # Claude Code skill: update CLAUDE.md, commit, write debrief to Notion
+└── agent/
+    ├── .env                          # API keys (NEVER commit)
+    └── .env.example                  # Template listing all required keys
 ```
 
-## Key Design Decisions
-
-### Imports
-No `__init__.py` files. Scripts use `sys.path.insert(0, AGENT_ROOT)` to import from `shared/`. This is intentional for cron robustness.
-
-### Notion SDK v3 Workaround
-`notion-client` v3.0.0 removed `databases.query()` and `data_sources.query()` doesn't work with regular database IDs. We use custom helpers in `notion_helper.py` that call the REST API directly with `Notion-Version: 2022-06-28`:
-- `_query_database()` — POST to `/databases/{id}/query`
-- `_ensure_database_property()` — PATCH to `/databases/{id}` to add missing properties (Date, Project, Status, etc.) automatically before page creation
-
-### Todoist v4 Pagination & Filtering
-`api.get_tasks()` returns `Iterator[list[Task]]`, not a flat list. Must flatten with nested loop.
-The v4 client does NOT support a `filter` parameter — filtering (e.g. today's tasks only) must be done client-side by comparing `task.due.date` (which is a `datetime.date` object, not a string — use `str()` to compare with ISO date strings).
-
-### Session Project Tagging
-Session debriefs are tagged with a "Project" select property (e.g. "Jarvis", "Math homework"). Session start asks "What are you working on today?" and filters to the most recent debrief for that project. This allows context switching between unrelated work streams.
-
-### Error Handling
-- Data fetching (Gmail, Calendar, Todoist, GitHub): catches errors, returns empty list, pipeline continues
-- Claude API + Notion writes: errors are fatal (re-raised)
-
-### Google OAuth
-- First run is interactive (opens browser). After that, `token.json` is reused.
-- If Google Cloud app is in "testing" mode, tokens expire after 7 days.
-- User's Gmail must be added as a test user in Google Cloud Console > OAuth consent screen.
-
-## Running the Scripts
-
+**Symlinks (one-time setup per machine):**
 ```bash
-# Morning briefing (runs full pipeline, auto-opens Notion page)
-cd agent && python personalhq/morning_briefing.py
-
-# Session start (asks project, writes to Notion, auto-opens page)
-cd agent && python workhorse/session_start.py
-
-# Session debrief (asks project + 3 prompts, writes to Notion)
-cd agent && python workhorse/session_debrief.py
+ln -sf /path/to/Jarvis1.0/skills/start-session.md ~/.claude/commands/start-session.md
+ln -sf /path/to/Jarvis1.0/skills/end-session.md ~/.claude/commands/end-session.md
 ```
 
-## Environment Variables (.env)
-| Variable | Service | Notes |
+## Environment Variables
+The `agent/.env` file still holds API keys for any future local tooling. See `agent/.env.example` for the full list of variables. The `.md` workflows don't use these — they access services via MCP tools connected to the Claude AI account.
+
+## MCP Connections
+
+### Connected (via Claude AI account)
+| Service | MCP Server | Used by |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | Claude API | Must have credits on console.anthropic.com |
-| `NOTION_TOKEN` | Notion | Starts with `ntn_` or `secret_` |
-| `NOTION_BRIEFING_DB_ID` | Notion | 32-char ID from database URL |
-| `NOTION_SESSION_DB_ID` | Notion | 32-char ID from database URL (session debriefs) |
-| `NOTION_SESSION_START_DB_ID` | Notion | 32-char ID from database URL (session starts) |
-| `TODOIST_API_TOKEN` | Todoist | From Settings > Integrations > Developer |
-| `GITHUB_TOKEN` | GitHub | Personal access token |
-| `GITHUB_REPOS` | GitHub | Format: `owner/repo1,owner/repo2` |
-| `GOOGLE_CREDENTIALS_PATH` | Google | Default: `credentials.json` (Mac only) |
-| `GOOGLE_TOKEN_PATH` | Google | Default: `token.json` (Mac only) |
-| `WEATHER_LOCATION` | Open-Meteo | City name, e.g. `Tel Aviv` (Mac only) |
-| `GARMIN_EMAIL` | Garmin Connect | Garmin account email (Mac only) |
-| `GARMIN_PASSWORD` | Garmin Connect | Garmin account password (Mac only) |
+| Gmail | `gmail.mcp.claude.com` | Morning briefing |
+| Google Calendar | `gcal.mcp.claude.com` | Morning briefing |
+| Notion | `mcp.notion.com` | Morning briefing, session start, session debrief |
+
+### Not yet connected
+| Service | Status | Notes |
+|---|---|---|
+| Todoist | No MCP server available | Tasks section omitted from briefing. WebFetch can't pass auth headers. |
+| Garmin | No MCP server available | Body section omitted from briefing. Complex auth (Cloudflare). |
+| GitHub | MCP needs OAuth | Run `/mcp` in Claude Code to authenticate. Skills fall back to `git log` locally. |
+
+### Weather
+Open-Meteo API via WebFetch (no API key, no MCP needed). Hardcoded to Tel Aviv in workflow.
 
 ## Notion Database Schemas
 
 ### Daily Briefings DB
-| Property | Type |
-|---|---|
-| Name | title |
-| Date | date |
-| Type | select |
+- **URL:** `https://www.notion.so/33834a332bc280748168c864704afede`
+- **Data source:** `collection://33834a33-2bc2-803c-9ada-000b8d9df901`
+
+| Property | Type | Notes |
+|---|---|---|
+| Name | title | Format: `Daily Briefing — YYYY-MM-DD` |
+| Date | date | |
+| Type | select | Always `morning_briefing` |
 
 ### Session Starts DB
+- **URL:** `https://www.notion.so/33834a332bc28032b70de04777e86133`
+
 | Property | Type | Notes |
 |---|---|---|
 | Name | title | Format: `[Project] Session Start — YYYY-MM-DD HH:MM` |
-| Date | date | Auto-created by `_ensure_database_property()` |
-| Project | select | Auto-created; e.g. "Jarvis", "Math homework" |
+| Date | date | |
+| Project | select | e.g. "Jarvis", "Math homework" |
 
 ### Session Debriefs DB
+- **URL:** `https://www.notion.so/33834a332bc2806381a4dd07fe7db184`
+
 | Property | Type | Notes |
 |---|---|---|
 | Name | title | Format: `[Project] Session Debrief — YYYY-MM-DD HH:MM` |
 | Date | date | |
-| Type | select | Always "session_debrief" |
-| Status | select | Auto-created; always "completed" |
-| Project | select | Auto-created; e.g. "Jarvis", "Math homework" |
-
-All databases must have the Jarvis1.0 integration connected (database `...` menu > Connections). Missing properties (Date, Project, Status) are auto-created via the Notion API on first use.
-
-## Current Status (updated 2026-04-08, session 4)
-
-### Working
-- morning_briefing.py — fully tested, redesigned Notion page (callout summary, formatted calendar schedule, emoji headings, dividers), auto-opens in browser on TTY / notification only on launchd
-- **Summary voice spec externalized (2026-04-05)** — voice rules now live in [agent/personalhq/summary_voice.md](agent/personalhq/summary_voice.md) as prose + annotated examples + anti-examples, loaded at runtime and injected into `BRIEFING_SYSTEM_PROMPT`. Edit that file (not the Python prompt) when tuning voice. Structural/parsing requirements (required headings, `[OVERDUE]`/`[TODAY]` tag preservation) stay in `BRIEFING_SYSTEM_PROMPT` in [morning_briefing.py](agent/personalhq/morning_briefing.py) next to the parser. Approved example: *"Good morning, Amit. Mild and partly cloudy out there with a light breeze — you've got a solid day lined up with deep work, a session at Machon Weizmann..."*
-- **Weather integration (2026-04-05)** — Open-Meteo (no API key). `WEATHER_LOCATION` env var (use spaces not hyphens). Returns feel phrases (sky+temp+wind) with NO numeric temperatures
-- **Task tagging (2026-04-05)** — tasks pre-tagged `[OVERDUE]`/`[TODAY]` in the prompt input; overdue strictly means `due.date < today`
-- **Garmin integration implemented (2026-04-06)** — `garmin_helper.py` written, wired into `morning_briefing.py`, Notion `_build_briefing_blocks()` updated for Body section. All code verified (syntax OK). End-to-end test passed WITHOUT Garmin (graceful degradation confirmed — briefing runs fine, Body section simply absent). launchd job loaded and confirmed registered (`com.jarvis.briefing`, fires at 5:30 AM / on wake). `run_briefing.sh` wrapper with 60-min dedup lock in place.
-- **Garmin auth — two-phase login implemented (2026-04-06)** — `_get_client()` now tries token-only login first (`Garmin(email=None, password=None)`), then falls back to credential login only if no cached tokens exist. This avoids Cloudflare entirely on all runs after the first. Previous approach (always constructing with credentials) hit Cloudflare 429/403 rate limits after ~8 attempts. **First run on Mac still required** — run `python personalhq/garmin_helper.py` from terminal, enter MFA code if prompted, tokens cache to `agent/garmin_tokens/` and credential login never happens again.
-- **Auto-sync from GitHub on session start (2026-04-06)** — `session_start.py` now runs `git pull` at the top of `main()` so the PC is always synced from the latest MacBook commits before starting work. Non-fatal: logs a warning and continues if there's no internet or a conflict.
-- **Morning briefing hang fix (2026-04-08)** — diagnosed root cause of Apr 7–8 briefing failures: `garminconnect` library hung indefinitely during Cloudflare-blocked credential login, which blocked launchd from starting the next day's run. Fixed with: (1) 3-minute `signal.alarm` hard timeout wrapping `fetch_garmin_readiness()` in `garmin_helper.py`; (2) 10-minute `perl alarm` timeout in `run_briefing.sh` as a shell-level safety net; (3) explicit FAILED logging replacing `set -e`; (4) TTY guard in `get_google_credentials()` so expired Google tokens fail fast instead of hanging under launchd.
-- **GitHub PaginatedList slice fix (2026-04-08)** — `session_start.py` was calling `list(paginated_list[:5])` which fails with `list index out of range`. Fixed to `list(paginated_list)[:5]` for commits, PRs, and issues.
-- **`/start-session` Claude Code skill (2026-04-06)** — global slash command at `~/.claude/commands/start-session.md` (PC only). Type `/start-session` in any Claude Code session; it detects the project from the open workspace folder name (e.g. "Jarvis1.0" → "Jarvis") and runs `session_start.py --project <name>` non-interactively. `session_start.py` now accepts `--project` arg to skip the interactive prompt; running it directly still prompts as before.
-- **`/end-session` Claude Code skill (2026-04-06)** — global slash command at `~/.claude/commands/end-session.md` (PC only). Type "end session" at the end of any session; Claude automatically: (1) updates CLAUDE.md Current Status, (2) commits + pushes all changes, (3) runs `session_debrief.py`. No user input at any step.
-- **`session_debrief.py` fully automated (2026-04-06)** — no user input. Fetches GitHub commits since the last session debrief (from Notion), sends them to Claude API to generate the three-section debrief, writes to Notion, auto-opens in browser. Exit code 2 = no commits found (used by `/end-session` to fall back to conversation-based debrief via `--from-json`). Optional `--project` arg overrides auto-detection; standalone auto-detects from `GITHUB_REPOS` env var.
-- session_start.py — writes to Notion Session Start DB with project filtering, auto-opens in browser
-- Project-based context switching — debrief tagged with project name, session start filters by project to pull relevant history
-- Google OAuth — token.json saved, no browser popup needed on subsequent runs
-- All APIs authenticated and confirmed working (Claude, Notion, Gmail, Calendar, Todoist, GitHub, Open-Meteo)
-
-### Not Yet Done
-- **Garmin first-time token generation (Mac)** — run `cd agent && python personalhq/garmin_helper.py` from a terminal on the Mac. Enter MFA code if prompted. Tokens cache to `agent/garmin_tokens/` (gitignored). Then run full briefing to verify Body section appears in Notion. **Rate limit warning:** Garmin's Cloudflare blocks repeated programmatic logins — multiple attempts on 2026-04-06 triggered 429/403 lockout. Wait several hours (ideally overnight) between attempts. Do NOT retry in a loop — each failed attempt extends the lockout. The launchd 5:30 AM briefing will also attempt this automatically once the lock clears (now safe — Garmin fetch is bounded by 3-minute timeout).
-- ~~Automate session debrief~~ — done via `/end-session` skill + fully-automated `session_debrief.py`
-- No unit tests yet
-- Gmail query tuning — returned 0 unread during testing (verify on a day with actual unread mail)
-- Claude occasionally slips corporate filler words despite voice spec — user has tolerated it but keep an eye on it
-
-### Iteration workflow
-User reviews briefings via Notion page comments. Fetch via `notion-get-comments` MCP tool after each run and iterate the prompt based on feedback.
-
-## Quick Verification
-```bash
-# Test that all APIs are connected (from agent/ directory):
-python -c "from dotenv import load_dotenv; load_dotenv('.env'); import os; print('Anthropic:', 'OK' if os.environ.get('ANTHROPIC_API_KEY') else 'MISSING'); print('Notion:', 'OK' if os.environ.get('NOTION_TOKEN') else 'MISSING'); print('Todoist:', 'OK' if os.environ.get('TODOIST_API_TOKEN') else 'MISSING'); print('GitHub:', 'OK' if os.environ.get('GITHUB_TOKEN') else 'MISSING')"
-
-# Full morning briefing test:
-cd agent && python personalhq/morning_briefing.py
-
-# Session start (interactive prompt):
-cd agent && python workhorse/session_start.py
-# Session start non-interactive (used by /start-session skill):
-cd agent && python workhorse/session_start.py --project Jarvis
-
-# Session debrief (fully automated — no prompts):
-cd agent && python workhorse/session_debrief.py
-# Debrief with project override:
-cd agent && python workhorse/session_debrief.py --project Jarvis
-```
+| Type | select | Always `session_debrief` |
+| Status | select | Always `completed` |
+| Project | select | e.g. "Jarvis", "Math homework" |
 
 ## Briefing Page Layout
-The morning briefing Notion page uses a structured layout built by `_build_briefing_blocks()`:
-1. **☀️ Summary callout** (yellow) — greeting + one flowing sentence about the day
+The morning briefing Notion page uses this structure:
+1. **☀️ Summary callout** (yellow) — greeting + one flowing sentence about the day (see [summary_voice.md](workflows/morning-briefing/summary_voice.md))
 2. **💪 Body** (if Garmin data available) — sleep, HRV, resting HR interpreted with training recommendations
 3. **📅 Today's Schedule** — formatted event list with times (e.g. `9:00 AM – 10:00 AM — Meeting`)
 4. **📧 Email Highlights** — bullet points of actionable emails
-5. **✅ Today's Tasks** — today's + overdue Todoist tasks only
+5. **✅ Today's Tasks** — today's + overdue tasks
 
-The session start page uses `_build_session_start_blocks()`:
+Session start page:
 1. **🔄 Recap callout** (blue) — last session summary
 2. **🐙 GitHub Activity** — recent commits, PRs, issues
 3. **🎯 Suggested Priorities** — what to focus on
 
+## Session Project Tagging
+Session debriefs are tagged with a "Project" select property (e.g. "Jarvis", "Math homework"). Session start filters to the most recent debrief for that project. Project is auto-detected from the workspace folder name (e.g. "Jarvis1.0" -> "Jarvis").
+
+## Voice Spec
+The morning briefing summary voice spec lives in [workflows/morning-briefing/summary_voice.md](workflows/morning-briefing/summary_voice.md). Edit that file when tuning voice. Key rules:
+- Greeting + ONE flowing sentence
+- Weather woven as an aside, em-dash pivot into the day
+- Warm, understated, casual — like a friend, not a productivity app
+- No corporate filler, no numeric temperatures
+
+## Current Status (updated 2026-04-08, session 5 — migration complete)
+
+### Working
+- **Migration to .md workflows (2026-04-08)** — replaced ~1,400 lines of Python with `.md` workflow files + MCP tools. No Python dependencies. All old scripts deleted (preserved in git history).
+- **RemoteTrigger for morning briefing** — `trig_01BsVkCiat4WG2UKTis8kw3p`, daily 6 AM UTC (9 AM Israel). Connected: Gmail, Calendar, Notion MCP. Uses Sonnet 4.6.
+- **`/start-session` skill** — detects project from workspace, spawns Sonnet subagent to fetch last debrief + GitHub activity, posts to Notion.
+- **`/end-session` skill** — updates CLAUDE.md, commits + pushes, spawns Sonnet subagent to generate debrief from commits, posts to Notion.
+- **Voice spec** — externalized in `summary_voice.md`, unchanged from Python era.
+- **Weather** — Open-Meteo via WebFetch, feel phrases only (no numeric temps).
+- **Notion databases** — all three databases (briefings, session starts, session debriefs) connected and working.
+
+### Not Yet Done
+- **RemoteTrigger verification** — manually fired 2026-04-08 but Notion page did not appear. Debug in next session. First scheduled run is 2026-04-09 9 AM Israel.
+- **Todoist integration** — no MCP server available. Tasks section shows placeholder. Spec preserved in `1-fetch-data.md` for when a server becomes available.
+- **Garmin integration** — no MCP server available. Body section omitted. Spec preserved in `1-fetch-data.md`.
+- **GitHub MCP auth** — needs manual OAuth via `/mcp` in Claude Code. Skills fall back to `git log` without it.
+- **Apple Shortcuts wake trigger** — trigger briefing when Sleep Focus turns off. Not yet set up (current: fixed 9 AM cron).
+- **PC symlinks** — `~/.claude/commands/` symlinks need one-time setup on PC after pulling.
+- Gmail query tuning — may return 0 unread (verify after first working RemoteTrigger run)
+- Claude occasionally slips corporate filler words despite voice spec
+
+### Iteration workflow
+User reviews briefings via Notion page comments. Fetch via `notion-get-comments` MCP tool and iterate the prompt in the workflow `.md` files or the RemoteTrigger prompt.
+
 ## Known Issues / Gotchas
-- PC has Python 3.12 AND 3.13 installed. Use `python -m pip install` (not bare `pip`) to target the right version.
-- `file_cache` warnings from `googleapiclient.discovery_cache` are harmless — ignore them.
-- Todoist `task.due.date` is a `datetime.date` object, not a string. Must use `str()` for comparison.
-- GitHub repo `AGrupper/Jarvis1.0` — first commit pushed 2026-04-04. GitHub fetch errors should no longer occur.
+- RemoteTrigger runs in Anthropic's cloud — no access to local files, local env vars, or local services.
+- GitHub repo: `AGrupper/Jarvis1.0`
+- `agent/.env` still exists locally for any future local tooling. Not used by workflows (they use MCP tools directly).
+- Old Python scripts are preserved in git history if needed for reference.

@@ -1,7 +1,0 @@
-# PersonalHQ (MacBook) — morning briefing: Gmail + Calendar + Todoist + Garmin
--r requirements-base.txt
-google-api-python-client>=2.193.0
-google-auth-httplib2>=0.3.1
-google-auth-oauthlib>=1.3.1
-todoist-api-python>=4.0.0
-garminconnect>=0.2.19

@@ -1,6 +1,0 @@
-.env
-credentials.json
-token.json
-garmin_tokens/
-__pycache__/
-*.pyc

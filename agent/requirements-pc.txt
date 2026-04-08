@@ -1,4 +1,0 @@
-# WorkHorse (PC) — session start/debrief: Todoist + GitHub
--r requirements-base.txt
-todoist-api-python>=4.0.0
-PyGithub>=2.9.0

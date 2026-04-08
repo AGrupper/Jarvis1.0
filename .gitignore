@@ -1,0 +1,15 @@
+# Secrets and credentials
+agent/.env
+agent/credentials.json
+agent/token.json
+agent/garmin_tokens/
+
+# Python artifacts (kept for any future local scripts)
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+
+# Claude Code plans (local only)
+.claude/plans/
